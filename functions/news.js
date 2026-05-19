@@ -1,7 +1,6 @@
 const https = require('https');
 
 const GNEWS_KEY    = process.env.GNEWS_API_KEY;
-const GUARDIAN_KEY = process.env.GUARDIAN_API_KEY;
 const CURRENTS_KEY = process.env.CURRENTS_API_KEY;
 
 function get(options, timeoutMs = 8000) {
@@ -40,38 +39,14 @@ async function fetchGNews(q, max = 7) {
   }));
 }
 
-// ── Guardian ────────────────────────────────────────────
-async function fetchGuardian(q, section, max = 7) {
-  const params = {
-    'api-key': GUARDIAN_KEY,
-    'page-size': max,
-    'order-by': 'newest',
-    'show-fields': 'trailText'
-  };
-  if (q) params.q = q;
-  if (section) params.section = section;
-  const qs = new URLSearchParams(params).toString();
-  const body = await get({
-    hostname: 'content.guardianapis.com',
-    path: `/search?${qs}`,
-    headers: { 'User-Agent': 'KarlsMorningBrief/1.0' }
-  });
-  const data = JSON.parse(body);
-  if (data.response?.status !== 'ok') throw new Error('Guardian: ' + JSON.stringify(data));
-  return data.response.results.map(a => ({
-    title: a.webTitle,
-    description: a.fields?.trailText || '',
-    url: a.webUrl,
-    publishedAt: a.webPublicationDate,
-    source: { name: 'The Guardian' }
-  }));
-}
-
 // ── Currents ────────────────────────────────────────────
-async function fetchCurrents(keywords, category, max = 7) {
-  const params = { apiKey: CURRENTS_KEY, language: 'en', limit: max };
-  if (keywords) params.keywords = keywords;
-  if (category) params.category = category;
+async function fetchCurrents(keywords, max = 7) {
+  const params = {
+    apiKey: CURRENTS_KEY,
+    language: 'en',
+    limit: max,
+    keywords
+  };
   const qs = new URLSearchParams(params).toString();
   const body = await get({
     hostname: 'api.currentsapi.services',
@@ -96,23 +71,20 @@ async function getSection(section) {
       return fetchGNews('Texas', 7);
 
     case 'us':
-      return fetchGNews('United States White House Congress', 7);
+      return fetchGNews('United States politics White House Congress economy', 7);
 
     case 'germany':
-      try { return await fetchGuardian('Germany', null, 7); }
-      catch(e) { return fetchGNews('Germany', 7); }
+      return fetchGNews('Germany Berlin Merz Europe', 7);
 
     case 'world':
-      try { return await fetchGuardian(null, 'world', 7); }
-      catch(e) { return fetchGNews('world news international', 7); }
+      return fetchGNews('world international news Iran Middle East NATO Ukraine China', 7);
 
     case 'tech':
-      try { return await fetchCurrents('artificial intelligence technology', 'technology', 7); }
-      catch(e) { return fetchGNews('AI technology Apple Google Microsoft', 7); }
+      try { return await fetchCurrents('artificial intelligence technology Apple Google Microsoft OpenAI', 7); }
+      catch(e) { return fetchGNews('AI technology Apple Google Microsoft OpenAI', 7); }
 
     case 'sports':
-      try { return await fetchGuardian(null, 'sport', 7); }
-      catch(e) { return fetchGNews('NBA NFL MLB sports', 7); }
+      return fetchGNews('NBA NFL MLB Masters golf NCAA sports', 7);
 
     default:
       throw new Error('Unknown section: ' + section);
@@ -129,12 +101,6 @@ exports.handler = async function(event) {
       body: JSON.stringify({ status: 'error', message: 'Missing section parameter' })
     };
   }
-
-  console.log('Keys present:', {
-    gnews: !!GNEWS_KEY,
-    guardian: !!GUARDIAN_KEY,
-    currents: !!CURRENTS_KEY
-  });
 
   try {
     const articles = await getSection(section);
